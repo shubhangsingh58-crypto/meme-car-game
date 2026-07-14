@@ -23,10 +23,14 @@ jobs:
         sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev libsqlite3-dev sqlite3 bzip2 libbz2-dev
         pip3 install --user --upgrade buildozer cython virtualenv
 
-    - name: Build with Buildozer
+    - name: Build with Buildozer (Auto Accept Licenses)
       run: |
         export PATH=$PATH:~/.local/bin
-        buildozer android debug
+        # Ye line automatic saare Android SDK licenses ko accept kar degi
+        mkdir -p ~/.android && touch ~/.android/repositories.cfg
+        yes | buildozer android debug
+      env:
+        REQS: python3,kivy
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
