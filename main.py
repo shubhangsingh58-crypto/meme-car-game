@@ -5,7 +5,7 @@ import os
 import math
 
 pygame.init()
- try:
+try:
     pygame.mixer.init()
 except Exception as e:
     print("Mixer init failed:", e) # Audio Engine Initialize
@@ -70,7 +70,7 @@ police_x, police_y = 375, 570
 police_speed_x = 4              
 police_width, police_height = 50, 80
 
-heli_x, heli_y = WIDTH // 2, -150                   
+heli_x, heli_y = WIDTH // 2, -150                    
 heli_active = False
 heli_wobble = 0
 
@@ -97,15 +97,15 @@ base_line_speed = 10
 line_speed = base_line_speed
 player_position = 10
 
-# --- SMART SOUND LOADER (Handles both single and double .mp3 extensions) ---
+# --- FIXED SMART SOUND LOADER (Prioritizes single clean extensions) ---
 try:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 except:
     BASE_DIR = "."
 
 def load_sound_safe(base_name):
-    # Try all possible extensions Windows might have created
-    possible_names = [base_name + ".mp3.mp3", base_name + ".mp3", base_name]
+    # Search formats from cleanest to backup double extension if still cached anywhere
+    possible_names = [base_name + ".mp3", base_name, base_name + ".mp3.mp3"]
     for name in possible_names:
         for folder in [BASE_DIR, os.path.join(BASE_DIR, ".."), os.path.join(BASE_DIR, "cargame")]:
             path = os.path.join(folder, name)
@@ -122,12 +122,16 @@ sound_khopdi_tod = load_sound_safe("khopdi_tod")
 sound_moye_moye = load_sound_safe("moye_moye")
 sound_meow = load_sound_safe("meow")
 
-# --- IMAGE LOADING & PRE-RENDERING ---
+# --- IMAGE LOADING & PRE-RENDERING FIXED ---
 def load_car_image(possible_names):
     for name in possible_names:
         for folder in [BASE_DIR, os.path.join(BASE_DIR, ".."), os.path.join(BASE_DIR, "cargame")]:
             path = os.path.join(folder, name)
-            if os.path.exists(path): return pygame.image.load(path).convert_alpha()
+            if os.path.exists(path): 
+                try:
+                    return pygame.image.load(path).convert_alpha()
+                except:
+                    pass
     return None
 
 HAS_IMAGES = False
@@ -135,8 +139,9 @@ player_normal_surf = None
 player_boost_surf = None
 enemy_surf = None
 
-img_base = load_car_image(["player_car.png.png", "player_car.png"])
-img_enemy = load_car_image(["enemy_car.png.png", "enemy_car.png"])
+# Prioritize the clean single extension names
+img_base = load_car_image(["player_car.png", "player_car.png.png"])
+img_enemy = load_car_image(["enemy_car.png", "enemy_car.png.png"])
 
 if img_base and img_enemy:
     try:
@@ -149,7 +154,8 @@ if img_base and img_enemy:
         player_boost_surf.blit(boost_glow, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
         
         HAS_IMAGES = True
-    except:
+    except Exception as img_err:
+        print("Image scale error:", img_err)
         HAS_IMAGES = False
 
 def init_opponents():
