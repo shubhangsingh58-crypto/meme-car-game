@@ -5,7 +5,7 @@ package.domain = org.shubhang
 source.dir = .
 source.include_exts = py,png,jpg,mp3,wav
 version = 0.1
-requirements = python3==3.11.5,kivy
+requirements =python3, kivy, sdl2_image, sdl2_mixer
 android.api = 34
 android.minapi = 21
 android.ndk = 25b
