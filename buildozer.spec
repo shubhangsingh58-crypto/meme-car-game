@@ -5,7 +5,7 @@ package.domain = org.shubhang
 source.dir = .
 source.include_exts = py,png,jpg,mp3,wav
 version = 0.1
-requirements = python3,kivy
+requirements = python3==3.11.5,kivy
 orientation = landscape
 fullscreen = 1
 android.archs = arm64-v8a
