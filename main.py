@@ -5,7 +5,10 @@ import os
 import math
 
 pygame.init()
-pygame.mixer.init()  # Audio Engine Initialize
+ try:
+    pygame.mixer.init()
+except Exception as e:
+    print("Mixer init failed:", e) # Audio Engine Initialize
 
 WIDTH = 800
 HEIGHT = 600
@@ -34,8 +37,8 @@ MAP_THEMES = {
 }
 
 # --- FONTS ---
-font = pygame.font.SysFont("Arial", 24, bold=True)
-large_font = pygame.font.SysFont("Arial", 50, bold=True)
+font = pygame.font.Font(None, 24)
+large_font = pygame.font.Font(None, 50)
 
 # --- STATES ---
 STATE_MENU = "MENU"
@@ -95,7 +98,10 @@ line_speed = base_line_speed
 player_position = 10
 
 # --- SMART SOUND LOADER (Handles both single and double .mp3 extensions) ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+try:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+except:
+    BASE_DIR = "."
 
 def load_sound_safe(base_name):
     # Try all possible extensions Windows might have created
