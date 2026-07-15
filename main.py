@@ -9,9 +9,6 @@ from kivy.graphics import Color, Rectangle, Ellipse, Line
 from kivy.core.audio import SoundLoader
 from kivy.core.text import Label as CoreLabel
 
-# Screen configuration for Landscape
-Window.size = (800, 600)
-
 MAP_THEMES = {
     1: {"bg": (40/255, 150/255, 40/255), "road": (70/255, 70/255, 70/255), "tree": (30/255, 120/255, 30/255), "name": "Level 1: Green Valley"},
     2: {"bg": (210/255, 180/255, 140/255), "road": (90/255, 85/255, 80/255), "tree": (120/255, 110/255, 60/255), "name": "Level 2: Desert Highway"},
@@ -26,34 +23,27 @@ class GameWidget(Widget):
         self.current_state = "MENU"
         self.current_level = 1
         
-        # Game constants & variables
-        self.car_x, self.car_y = 375, 100 # Android uses bottom-left as (0,0)
-        self.base_car_speed = 8
-        self.car_speed = self.base_car_speed
-        self.car_width, self.car_height = 50, 80
+        # Sizing and Positioning defaults (Will adapt instantly via bind)
+        self.car_x, self.car_y = 0, 100
+        self.car_width, self.car_height = 50, 85
         
         self.TOTAL_RACERS = 10
         self.player_distance = 0.0
         self.race_length = 6000.0
         
-        self.lanes = [270, 375, 480]
+        self.lanes = []
         self.opponents = []
         self.opponent_colors = [(0,0,1), (1,0.4,0), (0.5,0,0.5), (0,1,1), (1,0.7,0.7)]
         
         self.game_timer = 60
         self.time_left = 60
         
-        self.police_x, self.police_y = 375, 20
+        self.police_x, self.police_y = 0, 30
         self.police_speed_x = 4
         
-        self.heli_x, self.heli_y = 400, 750
+        self.heli_x, self.heli_y = 0, 0
         self.heli_active = False
         self.heli_wobble = 0
-        
-        self.bullet_active = False
-        self.bullet_x, self.bullet_y = 0, 0
-        self.bullet_warning_timer = 0
-        self.bullet_warning_x = 0
         
         self.nitro_energy = 50.0
         self.super_nitro_timer = 0
@@ -66,33 +56,63 @@ class GameWidget(Widget):
         
         self.road_stripes_y = 0
         self.player_position = 10
+        self.trees = []
         
-        # Setup Scenery
-        self.trees = [{'x': random.randint(30, 170) if i%2==0 else random.randint(580, 720), 'y': random.randint(0, 600), 'side': 'left' if i%2==0 else 'right'} for i in range(6)]
-        
-        # Safe Sound Loaders
+        # Load meme sounds safely
         self.sound_are_baap_re = SoundLoader.load("are_baap_re.mp3")
         self.sound_khopdi_tod = SoundLoader.load("khopdi_tod.mp3")
         self.sound_moye_moye = SoundLoader.load("moye_moye.mp3")
         self.sound_meow = SoundLoader.load("meow.mp3")
         
-        # Key & Touch bounds binding
-        Window.bind(on_key_down=self.on_key_down)
-        
-        # Main Game Loop ticking at 60 FPS
+        # Game loop clocks
         Clock.schedule_interval(self.update, 1.0 / 60.0)
         Clock.schedule_interval(self.update_timer, 1.0)
         
-        self.start_level(1)
+        # Bind screen resizing dynamically
+        self.bind(size=self.setup_responsive_layout)
+
+    def setup_responsive_layout(self, *args):
+        if self.width < 100: return
+        
+        # Road takes 40% center area of any screen size
+        self.road_left = self.width * 0.3
+        self.road_width = self.width * 0.4
+        lane_w = self.road_width / 3
+        
+        # Midpoint of each lane
+        self.lanes = [
+            self.road_left + (lane_w * 0.5) - (self.car_width * 0.5),
+            self.road_left + (lane_w * 1.5) - (self.car_width * 0.5),
+            self.road_left + (lane_w * 2.5) - (self.car_width * 0.5)
+        ]
+        
+        # Reposition cars safely if game is active
+        if self.current_state == "MENU":
+            self.car_x = self.lanes[1]
+            self.police_x = self.lanes[1]
+            self.heli_x = self.width / 2
+            self.heli_y = self.height + 100
+            
+        # Responsive Trees on Grass boundaries
+        self.trees = []
+        for i in range(8):
+            if i % 2 == 0:
+                tx = random.randint(10, max(20, int(self.road_left - 60)))
+                side = 'left'
+            else:
+                tx = random.randint(int(self.road_left + self.road_width + 10), max(int(self.road_left + self.road_width + 20), int(self.width - 60)))
+                side = 'right'
+            self.trees.append({'x': tx, 'y': random.randint(0, int(self.height)), 'side': side})
 
     def start_level(self, level_num):
         self.current_level = level_num
-        self.car_x, self.car_y = 375, 100
-        self.police_x, self.police_y = 375, 20
-        self.heli_x, self.heli_y = 400, 750
+        self.setup_responsive_layout()
+        self.car_x = self.lanes[1]
+        self.car_y = 100
+        self.police_x = self.lanes[1]
+        self.police_y = 30
+        self.heli_y = self.height + 150
         self.heli_active = False
-        self.bullet_active = False
-        self.bullet_warning_timer = 0
         self.player_distance = 0.0
         self.nitro_energy = 50.0
         self.super_nitro_timer = 0
@@ -104,7 +124,6 @@ class GameWidget(Widget):
         self.police_sound_played = False
         self.end_sound_played = False
         
-        # Reset sounds safely
         for s in [self.sound_are_baap_re, self.sound_khopdi_tod, self.sound_moye_moye, self.sound_meow]:
             if s: s.stop()
             
@@ -115,65 +134,43 @@ class GameWidget(Widget):
         for i in range(self.TOTAL_RACERS - 1):
             self.opponents.append({
                 'id': i,
-                'distance': 400.0 + (i * 480.0) + random.uniform(-80, 80),
-                'speed': 8.5 + (i * 0.35),
+                'distance': 500.0 + (i * 500.0) + random.uniform(-60, 60),
+                'speed': 8.2 + (i * 0.4),
                 'color': self.opponent_colors[i % len(self.opponent_colors)],
                 'x': random.choice(self.lanes),
-                'y': 800
+                'y': self.height + 200
             })
 
     def spawn_coin(self):
-        if len(self.coins_list) < 4:
-            lane = random.choice(self.lanes) + 15
-            coin_type = 'blue' if random.randint(1, 4) == 1 else 'yellow'
-            self.coins_list.append({'x': lane, 'y': random.randint(650, 800), 'type': coin_type})
+        if len(self.coins_list) < 4 and len(self.lanes) > 0:
+            cx = random.choice(self.lanes) + (self.car_width/2 - 12)
+            ctype = 'blue' if random.randint(1, 5) == 1 else 'yellow'
+            self.coins_list.append({'x': cx, 'y': self.height + 50, 'type': ctype})
 
-    def on_key_down(self, window, key, scancode, codepoint, modifier):
-        if self.current_state == "MENU" and key == 40: # Enter Key
-            self.start_level(1)
-            self.current_state = "GAME"
-        elif self.current_state == "GAME_OVER":
-            if key == 114: # 'R' Key
-                self.start_level(self.current_level)
-                self.current_state = "GAME"
-            elif key == 109: # 'M' Key
-                self.current_state = "MENU"
-        elif self.current_state == "VICTORY":
-            if key == 110: # 'N' Key
-                if self.current_level < 5:
-                    self.start_level(self.current_level + 1)
-                    self.current_state = "GAME"
-                else:
-                    self.current_state = "MENU"
-            elif key == 114: # 'R' Key
-                self.start_level(self.current_level)
-                self.current_state = "GAME"
-
-    # Android controls via Touch screen regions
     def on_touch_down(self, touch):
         if self.current_state == "MENU":
             self.start_level(1)
             self.current_state = "GAME"
             return True
-        elif self.current_state == "GAME_OVER":
-            self.start_level(self.current_level)
-            self.current_state = "GAME"
-            return True
-        elif self.current_state == "VICTORY":
-            if self.current_level < 5:
-                self.start_level(self.current_level + 1)
-            else:
-                self.current_state = "MENU"
+        elif self.current_state in ["GAME_OVER", "VICTORY"]:
+            self.start_level(1)
             self.current_state = "GAME"
             return True
             
         if self.current_state == "GAME":
-            if touch.x < 400: # Touch left half to move left
-                if self.car_x > 250: self.car_x -= 35
-            else: # Touch right half to move right
-                if self.car_x < 550 - self.car_width: self.car_x += 35
-            
-            # Double tap triggers Nitro Boost
+            # Left Half Touch -> Shift left lane / Right Half Touch -> Shift right lane
+            current_lane_idx = 1
+            min_dist = 99999
+            for idx, lx in enumerate(self.lanes):
+                if abs(self.car_x - lx) < min_dist:
+                    min_dist = abs(self.car_x - lx)
+                    current_lane_idx = idx
+                    
+            if touch.x < self.width / 2:
+                if current_lane_idx > 0: self.car_x = self.lanes[current_lane_idx - 1]
+            else:
+                if current_lane_idx < 2: self.car_x = self.lanes[current_lane_idx + 1]
+                
             if touch.is_double_tap and self.nitro_energy > 0:
                 self.nitro_active = True
         return True
@@ -190,92 +187,91 @@ class GameWidget(Widget):
                 else: self.current_state = "GAME_OVER"
 
     def update(self, dt):
+        if self.width < 100: return
         if self.current_state != "GAME":
             self.draw_canvas()
             return
             
-        # Speeds and dynamics calculations
+        # Speed dynamics
         if self.super_nitro_timer > 0:
             self.super_nitro_timer -= 1
-            line_speed = (10 + self.current_level) * 2.2
+            line_speed = (10 + self.current_level) * 2.0
         elif self.nitro_active and self.nitro_energy > 0:
-            self.nitro_energy -= 0.35
-            line_speed = (10 + self.current_level) * 1.6
+            self.nitro_energy -= 0.3
+            line_speed = (10 + self.current_level) * 1.5
         else:
             line_speed = 10 + self.current_level
             self.nitro_active = False
 
-        self.player_distance += (line_speed * 0.5)
+        self.player_distance += (line_speed * 0.4)
 
         if self.player_distance >= self.race_length:
             if self.player_position <= 3: self.current_state = "VICTORY"
             else: self.current_state = "GAME_OVER"
 
-        # Moving scenery down
-        self.road_stripes_y = (self.road_stripes_y - line_speed) % 600
+        # Background scrolling
+        self.road_stripes_y = (self.road_stripes_y - line_speed) % self.height
         for tree in self.trees:
             tree['y'] -= line_speed
-            if tree['y'] < -50:
-                tree['y'] = 650
-                tree['x'] = random.randint(30, 170) if tree['side'] == 'left' else random.randint(580, 720)
+            if tree['y'] < -60:
+                tree['y'] = self.height + 20
+                if tree['side'] == 'left':
+                    tree['x'] = random.randint(10, max(20, int(self.road_left - 60)))
+                else:
+                    tree['x'] = random.randint(int(self.road_left + self.road_width + 10), max(int(self.road_left + self.road_width + 20), int(self.width - 60)))
 
-        # AI Opponents updates
+        # AI Loop & Position Tracking
         player_pos_calc = self.TOTAL_RACERS
         for op in self.opponents:
-            op['distance'] += (op['speed'] * 0.5)
+            op['distance'] += (op['speed'] * 0.4)
             if op['distance'] <= self.player_distance: player_pos_calc -= 1
             op['y'] = self.car_y + (op['distance'] - self.player_distance)
 
         self.player_position = max(1, min(self.TOTAL_RACERS, player_pos_calc))
 
-        # Coins movements and collisions
+        # Coins rendering bounds & collisions
         for coin in self.coins_list[:]:
             coin['y'] -= line_speed
             if coin['y'] < -50: self.coins_list.remove(coin)
-            # Collision Box Check
-            elif (self.car_x < coin['x'] + 20 and self.car_x + self.car_width > coin['x'] and
-                  self.car_y < coin['y'] + 20 and self.car_y + self.car_height > coin['y']):
-                if coin['type'] == 'yellow': self.nitro_energy = min(100.0, self.nitro_energy + 25)
-                else: self.super_nitro_timer = 300
+            elif abs(self.car_x + self.car_width/2 - coin['x'] - 12) < 35 and abs(self.car_y + self.car_height/2 - coin['y'] - 12) < 50:
+                if coin['type'] == 'yellow': self.nitro_energy = min(100.0, self.nitro_energy + 20)
+                else: self.super_nitro_timer = 250
                 self.coins_list.remove(coin)
 
-        if random.randint(1, 100) < 5: self.spawn_coin()
+        if random.randint(1, 100) < 4: self.spawn_coin()
 
-        # Police movements & sound triggers
+        # Police processing logic
         if self.police_x < self.car_x: self.police_x += self.police_speed_x
         elif self.police_x > self.car_x: self.police_x -= self.police_speed_x
-        
-        if self.police_y < self.car_y - 20: self.police_y += 1
+        if self.police_y < self.car_y - 15: self.police_y += 0.5
         
         if not self.police_sound_played and self.sound_khopdi_tod:
             self.sound_khopdi_tod.play()
             self.police_sound_played = True
 
-        # Helicopter meme management
-        if self.player_distance >= 1500: self.heli_active = True
+        # Helicopter activation & mapping tracking
+        if self.player_distance >= 1200: self.heli_active = True
         if self.heli_active:
-            if self.heli_y > 450: self.heli_y -= 2
+            if self.heli_y > self.height * 0.65: self.heli_y -= 1.5
             if not self.heli_sound_played and self.sound_are_baap_re:
                 self.sound_are_baap_re.play()
                 self.heli_sound_played = True
-                
             self.heli_wobble += 0.05
-            self.heli_x += ((self.car_x + math.sin(self.heli_wobble)*30) - self.heli_x) * 0.04
+            self.heli_x += ((self.car_x + math.sin(self.heli_wobble) * 40) - self.heli_x) * 0.05
 
-        # Global hitboxes checks for crash conditions
-        if abs(self.car_x - self.police_x) < 45 and abs(self.car_y - self.police_y) < 75:
+        # Precise Crash Collision Checks
+        if abs(self.car_x - self.police_x) < 40 and abs(self.car_y - self.police_y) < 70:
             self.current_state = "GAME_OVER"
             
         for op in self.opponents:
-            if 0 < op['y'] < 600 and abs(self.car_x - op['x']) < 45 and abs(self.car_y - op['y']) < 75:
-                self.current_state = "GAME_OVER"
+            if -80 < op['y'] < self.height + 50:
+                if abs(self.car_x - op['x']) < 40 and abs(self.car_y - op['y']) < 70:
+                    self.current_state = "GAME_OVER"
 
-        # Safe sound trigger on end game
-        if self.current_state == "GAME_OVER" and not self.end_sound_played:
-            if self.sound_moye_moye: self.sound_moye_moye.play()
-            self.end_sound_played = True
-        elif self.current_state == "VICTORY" and not self.end_sound_played:
-            if self.sound_meow: self.sound_meow.play()
+        # Stop/Play state sounds triggers
+        if self.current_state in ["GAME_OVER", "VICTORY"] and not self.end_sound_played:
+            if self.current_state == "GAME_OVER" and self.sound_moye_moye: self.sound_moye_moye.play()
+            if self.current_state == "VICTORY" and self.sound_meow: self.sound_meow.play()
             self.end_sound_played = True
 
         self.draw_canvas()
@@ -285,65 +281,94 @@ class GameWidget(Widget):
         theme = MAP_THEMES[self.current_level]
         
         with self.canvas:
-            # Background Canvas Drawing
+            # Full Screen Responsive Map Grass Background
             Color(*theme["bg"])
-            Rectangle(pos=(0, 0), size=(800, 600))
+            Rectangle(pos=(0, 0), size=(self.width, self.height))
             
+            # State Management Rendering
             if self.current_state == "MENU":
-                Color(1, 215/255, 0) # Gold
-                # Kivy doesn't have inline fonts like pygame, we use core engine tags or labels
+                self.render_text("MEME CAR RACING", self.width/2, self.height*0.6, 36, (1,1,0))
+                self.render_text("Tap Anywhere to Start", self.width/2, self.height*0.4, 22, (1,1,1))
+                return
+            elif self.current_state == "GAME_OVER":
+                self.render_text("MOYE MOYE! GAME OVER", self.width/2, self.height*0.6, 34, (1,0,0))
+                self.render_text("Tap to Restart", self.width/2, self.height*0.4, 22, (1,1,1))
+                return
+            elif self.current_state == "VICTORY":
+                self.render_text("VICTORY! MEOW MEOW", self.width/2, self.height*0.6, 34, (0,1,0))
+                self.render_text("Tap to Continue", self.width/2, self.height*0.4, 22, (1,1,1))
                 return
 
-            # Road Layout Paint
+            # Centered Scaled Road Layout
             Color(*theme["road"])
-            Rectangle(pos=(250, 0), size=(300, 600))
+            Rectangle(pos=(self.road_left, 0), size=(self.road_width, self.height))
             
-            # Boundary lines
-            Color(1,1,1)
-            Rectangle(pos=(243, 0), size=(7, 600))
-            Rectangle(pos=(550, 0), size=(7, 600))
+            # White Road Boundaries
+            Color(1, 1, 1)
+            Rectangle(pos=(self.road_left - 4, 0), size=(4, self.height))
+            Rectangle(pos=(self.road_left + self.road_width, 0), size=(4, self.height))
             
-            # Center Stripes
+            # Dashed lane divider lines
             Color(1, 1, 0 if self.current_level == 4 else 1)
-            for y in range(0, 600, 150):
-                Rectangle(pos=(395, (y + self.road_stripes_y) % 600), size=(10, 50))
+            lane_w = self.road_width / 3
+            for y in range(0, int(self.height) + 120, 120):
+                curr_y = (y + self.road_stripes_y) % self.height
+                Rectangle(pos=(self.road_left + lane_w - 2, curr_y), size=(4, 45))
+                Rectangle(pos=(self.road_left + (lane_w * 2) - 2, curr_y), size=(4, 45))
                 
-            # Render Scenery
+            # Scenery Processing
             for tree in self.trees:
-                Color(139/255, 69/255, 19/255) # Brown
-                Rectangle(pos=(tree['x'] + 15, tree['y']), size=(10, 20))
+                Color(139/255, 69/255, 19/255)
+                Rectangle(pos=(tree['x'] + 16, tree['y']), size=(8, 16))
                 Color(*theme["tree"])
-                Ellipse(pos=(tree['x'], tree['y'] + 15), size=(40, 40))
+                Ellipse(pos=(tree['x'], tree['y'] + 12), size=(40, 40))
 
-            # Coins Render
+            # Coins Render Engine
             for coin in self.coins_list:
-                Color(1, 1, 0 if coin['type'] == 'yellow' else 1)
-                Ellipse(pos=(coin['x'], coin['y']), size=(20, 20))
+                Color(0, 0.7, 1) if coin['type'] == 'blue' else Color(1, 0.9, 0)
+                Ellipse(pos=(coin['x'], coin['y']), size=(24, 24))
 
-            # AI Racers Render
+            # AI Opponents Render Engine
             for op in self.opponents:
-                if -100 < op['y'] < 700:
+                if -100 < op['y'] < self.height + 100:
                     Color(*op['color'])
-                    Rectangle(pos=(op['x'], op['y']), size=(50, 80))
+                    Rectangle(pos=(op['x'], op['y']), size=(self.car_width, self.car_height))
 
-            # Police Car Render
-            Color(0,0,0)
-            Rectangle(pos=(self.police_x, self.police_y), size=(50, 80))
-            Color(0,0,1) # Light bar
-            Rectangle(pos=(self.police_x + 10, self.police_y + 75), size=(30, 5))
+            # Police Car Rendering
+            Color(0.1, 0.1, 0.1)
+            Rectangle(pos=(self.police_x, self.police_y), size=(self.car_width, self.car_height))
+            Color(0, 0, 1) # Flashing lightbar
+            Rectangle(pos=(self.police_x + 10, self.police_y + self.car_height - 6), size=(30, 6))
 
-            # Player Asset Render Engine
+            # Nitro Fire Flame Graphic Effect
             if self.super_nitro_timer > 0 or self.nitro_active:
-                Color(1, 0.5, 0) # Flame effect
-                Rectangle(pos=(self.car_x + 10, self.car_y - 20), size=(30, 20))
+                Color(1, 0.3 + (0.4 if self.super_nitro_timer > 0 else 0), 0)
+                Rectangle(pos=(self.car_x + 12, self.car_y - 25), size=(26, 25))
                 
-            Color(0.4, 0.8, 1) # Blue Player Car
+            # Main Player Car Graphics
+            Color(0.2, 0.65, 1)
             Rectangle(pos=(self.car_x, self.car_y), size=(self.car_width, self.car_height))
 
-            # Helicopter Mode Paint
+            # Helicopter Render Engine
             if self.heli_active:
-                Color(0.2, 0.2, 0.2)
-                Ellipse(pos=(self.heli_x - 30, self.heli_y - 20), size=(110, 40))
+                Color(0.15, 0.15, 0.15, 0.8)
+                Ellipse(pos=(self.heli_x - 45, self.heli_y - 20), size=(90, 40))
+                Color(0, 0, 0) # Blades
+                Line(points=[self.heli_x - 60, self.heli_y, self.heli_x + 60, self.heli_y], width=2)
+
+            # In-Game Dashboard HUD Text
+            hud_str = f"Rank: {self.player_position}/10 | Dist: {int(self.player_distance)}m | Time: {self.time_left}s | Nitro: {int(self.nitro_energy)}%"
+            self.render_text(hud_str, self.width / 2, self.height - 35, 18, (1, 1, 1), center=True)
+            self.render_text(theme["name"], 120, self.height - 35, 16, (1, 1, 0), center=False)
+
+    def render_text(self, text, x, y, size, color, center=True):
+        lbl = CoreLabel(text=text, font_size=size, color=(color[0], color[1], color[2], 1))
+        lbl.refresh()
+        texture = lbl.texture
+        if center:
+            Rectangle(texture=texture, pos=(x - texture.width/2, y - texture.height/2), size=texture.size)
+        else:
+            Rectangle(texture=texture, pos=(x, y), size=texture.size)
 
 class MemeCarGameApp(App):
     def build(self):
