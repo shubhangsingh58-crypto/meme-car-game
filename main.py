@@ -1,477 +1,353 @@
-import pygame
-import sys
-import random
 import os
+import random
 import math
+from kivy.app import App
+from kivy.uix.widget import Widget
+from kivy.core.window import Window
+from kivy.clock import Clock
+from kivy.graphics import Color, Rectangle, Ellipse, Line
+from kivy.core.audio import SoundLoader
+from kivy.core.text import Label as CoreLabel
 
-pygame.init()
-try:
-    pygame.mixer.init()
-except Exception as e:
-    print("Mixer init failed:", e) # Audio Engine Initialize
+# Screen configuration for Landscape
+Window.size = (800, 600)
 
-WIDTH = 800
-HEIGHT = 600
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Meme Racing Championship: Auto Sound Fix")
-
-# --- COLORS ---
-WHITE = (255, 255, 255)
-RED = (255, 0, 0)
-YELLOW = (255, 215, 0)
-BLUE = (0, 150, 255)
-ORANGE = (255, 100, 0)
-BLACK = (0, 0, 0)
-LIGHT_BLUE = (100, 200, 255)
-BROWN = (139, 69, 19)
-GRAY = (70, 70, 70)
-GREEN = (40, 150, 40)
-
-# --- MAP SPECIFIC COLORS ---
 MAP_THEMES = {
-    1: {"bg": (40, 150, 40), "road": (70, 70, 70), "tree": (30, 120, 30), "name": "Level 1: Green Valley"},
-    2: {"bg": (210, 180, 140), "road": (90, 85, 80), "tree": (120, 110, 60), "name": "Level 2: Desert Highway"},
-    3: {"bg": (240, 248, 255), "road": (60, 65, 75), "tree": (175, 200, 220), "name": "Level 3: Snow Mountain"},
-    4: {"bg": (20, 15, 35), "road": (30, 30, 40), "tree": (255, 20, 147), "name": "Level 4: Neon Cyber City"},
-    5: {"bg": (0, 100, 150), "road": (100, 100, 105), "tree": (50, 50, 50), "name": "Level 5: Mega Ocean Bridge"}
+    1: {"bg": (40/255, 150/255, 40/255), "road": (70/255, 70/255, 70/255), "tree": (30/255, 120/255, 30/255), "name": "Level 1: Green Valley"},
+    2: {"bg": (210/255, 180/255, 140/255), "road": (90/255, 85/255, 80/255), "tree": (120/255, 110/255, 60/255), "name": "Level 2: Desert Highway"},
+    3: {"bg": (240/255, 248/255, 255/255), "road": (60/255, 65/255, 75/255), "tree": (175/255, 200/255, 220/255), "name": "Level 3: Snow Mountain"},
+    4: {"bg": (20/255, 15/255, 35/255), "road": (30/255, 30/255, 40/255), "tree": (255/255, 20/255, 147/255), "name": "Level 4: Neon Cyber City"},
+    5: {"bg": (0, 100/255, 150/255), "road": (100/255, 100/255, 105/255), "tree": (50/255, 50/255, 50/255), "name": "Level 5: Mega Ocean Bridge"}
 }
 
-# --- FONTS ---
-font = pygame.font.Font(None, 24)
-large_font = pygame.font.Font(None, 50)
-
-# --- STATES ---
-STATE_MENU = "MENU"
-STATE_GAME = "GAME"
-STATE_GAME_OVER = "GAME_OVER"
-STATE_VICTORY = "VICTORY"
-current_state = STATE_MENU
-
-current_level = 1  
-
-# --- GAME VARIABLES ---
-car_x, car_y = 375, 480          
-base_car_speed = 8             
-car_speed = base_car_speed
-car_width, car_height = 50, 80
-
-TOTAL_RACERS = 10
-player_distance = 0.0
-race_length = 6000.0  
-
-opponents = []
-lanes = [270, 375, 480] 
-opponent_colors = [BLUE, ORANGE, (128,0,128), (0,255,255), (255,192,203)]
-
-game_timer = 60 
-timer_start_ticks = 0
-
-police_x, police_y = 375, 570                  
-police_speed_x = 4              
-police_width, police_height = 50, 80
-
-heli_x, heli_y = WIDTH // 2, -150                    
-heli_active = False
-heli_wobble = 0
-
-bullet_active = False
-bullet_rect = pygame.Rect(0, 0, 0, 0)
-bullet_warning_timer = 0
-bullet_warning_x, bullet_warning_y = 0, 0
-
-nitro_energy = 50         
-super_nitro_timer = 0     
-nitro_active = False
-coins_list = []           
-
-# --- SOUND MEME FLAGS ---
-heli_sound_played = False
-police_sound_played = False
-end_sound_played = False
-
-# --- SCENERY ---
-trees = [{'x': random.randint(30, 170) if i%2==0 else random.randint(580, 720), 'y': random.randint(0, 600), 'side': 'left' if i%2==0 else 'right'} for i in range(6)]
-road_stripes_y = 0
-line_y1, line_y2, line_y3 = 0, 200, 400
-base_line_speed = 10            
-line_speed = base_line_speed
-player_position = 10
-
-# --- FIXED SMART SOUND LOADER (Prioritizes single clean extensions) ---
-try:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-except:
-    BASE_DIR = "."
-
-def load_sound_safe(base_name):
-    # Search formats from cleanest to backup double extension if still cached anywhere
-    possible_names = [base_name + ".mp3", base_name, base_name + ".mp3.mp3"]
-    for name in possible_names:
-        for folder in [BASE_DIR, os.path.join(BASE_DIR, ".."), os.path.join(BASE_DIR, "cargame")]:
-            path = os.path.join(folder, name)
-            if os.path.exists(path):
-                try:
-                    return pygame.mixer.Sound(path)
-                except Exception as e:
-                    print(f"Error loading {name}: {e}")
-    return None
-
-# Safe load sounds
-sound_are_baap_re = load_sound_safe("are_baap_re")
-sound_khopdi_tod = load_sound_safe("khopdi_tod")
-sound_moye_moye = load_sound_safe("moye_moye")
-sound_meow = load_sound_safe("meow")
-
-# --- IMAGE LOADING & PRE-RENDERING FIXED ---
-def load_car_image(possible_names):
-    for name in possible_names:
-        for folder in [BASE_DIR, os.path.join(BASE_DIR, ".."), os.path.join(BASE_DIR, "cargame")]:
-            path = os.path.join(folder, name)
-            if os.path.exists(path): 
-                try:
-                    return pygame.image.load(path).convert_alpha()
-                except:
-                    pass
-    return None
-
-HAS_IMAGES = False
-player_normal_surf = None
-player_boost_surf = None
-enemy_surf = None
-
-# Prioritize the clean single extension names
-img_base = load_car_image(["player_car.png", "player_car.png.png"])
-img_enemy = load_car_image(["enemy_car.png", "enemy_car.png.png"])
-
-if img_base and img_enemy:
-    try:
-        player_normal_surf = pygame.transform.scale(img_base, (car_width, car_height))
-        enemy_surf = pygame.transform.scale(img_enemy, (50, 80))
+class GameWidget(Widget):
+    def __init__(self, **kwargs):
+        super(GameWidget, self).__init__(**kwargs)
+        self.current_state = "MENU"
+        self.current_level = 1
         
-        player_boost_surf = player_normal_surf.copy()
-        boost_glow = pygame.Surface((car_width, car_height), pygame.SRCALPHA)
-        boost_glow.fill((0, 100, 255, 70)) 
-        player_boost_surf.blit(boost_glow, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        # Game constants & variables
+        self.car_x, self.car_y = 375, 100 # Android uses bottom-left as (0,0)
+        self.base_car_speed = 8
+        self.car_speed = self.base_car_speed
+        self.car_width, self.car_height = 50, 80
         
-        HAS_IMAGES = True
-    except Exception as img_err:
-        print("Image scale error:", img_err)
-        HAS_IMAGES = False
-
-def init_opponents():
-    global opponents
-    opponents = []
-    for i in range(TOTAL_RACERS - 1):
-        opponents.append({
-            'id': i,
-            'distance': 400.0 + (i * 480.0) + random.uniform(-80, 80),
-            'speed': 8.5 + (i * 0.35), 
-            'color': opponent_colors[i % len(opponent_colors)],
-            'x': random.choice(lanes),
-            'y': -500 
-        })
-
-def spawn_coin():
-    if len(coins_list) < 4:
-        lane = random.choice(lanes) + 15
-        coin_type = 'blue' if random.randint(1, 4) == 1 else 'yellow' 
-        coins_list.append({'rect': pygame.Rect(lane, random.randint(-200, -50), 20, 20), 'type': coin_type})
-
-def start_level(level_num):
-    global car_x, car_y, line_y1, line_y2, line_y3, base_line_speed, police_x, police_y
-    global heli_x, heli_y, heli_active, bullet_active, bullet_warning_timer, player_distance
-    global nitro_energy, super_nitro_timer, coins_list, player_position, timer_start_ticks, current_level
-    global heli_sound_played, police_sound_played, end_sound_played
-    
-    current_level = level_num
-    car_x, car_y = 375, 480                 
-    police_x, police_y = 375, 570
-    heli_x, heli_y = WIDTH // 2, -150
-    heli_active = False
-    bullet_active = False
-    bullet_warning_timer = 0
-    player_distance = 0.0
-    nitro_energy = 50 
-    super_nitro_timer = 0
-    coins_list = []
-    player_position = TOTAL_RACERS
-    timer_start_ticks = pygame.time.get_ticks()
-    
-    # Flags & Sounds Reset
-    heli_sound_played = False
-    police_sound_played = False
-    end_sound_played = False
-    pygame.mixer.stop() 
-    
-    init_opponents()
-    line_y1, line_y2, line_y3 = 0, 200, 400
-    base_line_speed = 10 + current_level  
-    
-    for _ in range(4): spawn_coin()
-
-start_level(1)
-clock = pygame.time.Clock()  
-running = True
-
-while running:
-    clock.tick(60) 
-
-    # --- 1. EVENTS ---
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        if event.type == pygame.KEYDOWN:
-            if current_state == STATE_MENU:
-                if event.key == pygame.K_RETURN:
-                    start_level(1)
-                    current_state = STATE_GAME
-            elif current_state == STATE_GAME_OVER:
-                if event.key == pygame.K_r:
-                    start_level(current_level) 
-                    current_state = STATE_GAME
-                elif event.key == pygame.K_m:
-                    current_state = STATE_MENU
-            elif current_state == STATE_VICTORY:
-                if event.key == pygame.K_n: 
-                    if current_level < 5:
-                        start_level(current_level + 1)
-                        current_state = STATE_GAME
-                    else:
-                        current_state = STATE_MENU 
-                elif event.key == pygame.K_r:
-                    start_level(current_level)
-                    current_state = STATE_GAME
-
-    # --- 2. GAME LOOP LOGIC ---
-    if current_state == STATE_GAME:
-        keys = pygame.key.get_pressed()
+        self.TOTAL_RACERS = 10
+        self.player_distance = 0.0
+        self.race_length = 6000.0
         
-        seconds_passed = (pygame.time.get_ticks() - timer_start_ticks) // 1000
-        time_left = max(0, game_timer - seconds_passed)
-        if time_left <= 0:
-            if player_position <= 3: current_state = STATE_VICTORY
-            else: current_state = STATE_GAME_OVER
-
-        if super_nitro_timer > 0: super_nitro_timer -= 1
+        self.lanes = [270, 375, 480]
+        self.opponents = []
+        self.opponent_colors = [(0,0,1), (1,0.4,0), (0.5,0,0.5), (0,1,1), (1,0.7,0.7)]
         
-        if super_nitro_timer > 0: 
-            nitro_active = True
-            car_speed = base_car_speed * 1.7
-            line_speed = base_line_speed * 2.2
-        elif keys[pygame.K_SPACE] and nitro_energy > 0: 
-            nitro_active = True
-            nitro_energy -= 0.35  
-            car_speed = base_car_speed * 1.3
-            line_speed = base_line_speed * 1.6
+        self.game_timer = 60
+        self.time_left = 60
+        
+        self.police_x, self.police_y = 375, 20
+        self.police_speed_x = 4
+        
+        self.heli_x, self.heli_y = 400, 750
+        self.heli_active = False
+        self.heli_wobble = 0
+        
+        self.bullet_active = False
+        self.bullet_x, self.bullet_y = 0, 0
+        self.bullet_warning_timer = 0
+        self.bullet_warning_x = 0
+        
+        self.nitro_energy = 50.0
+        self.super_nitro_timer = 0
+        self.nitro_active = False
+        self.coins_list = []
+        
+        self.heli_sound_played = False
+        self.police_sound_played = False
+        self.end_sound_played = False
+        
+        self.road_stripes_y = 0
+        self.player_position = 10
+        
+        # Setup Scenery
+        self.trees = [{'x': random.randint(30, 170) if i%2==0 else random.randint(580, 720), 'y': random.randint(0, 600), 'side': 'left' if i%2==0 else 'right'} for i in range(6)]
+        
+        # Safe Sound Loaders
+        self.sound_are_baap_re = SoundLoader.load("are_baap_re.mp3")
+        self.sound_khopdi_tod = SoundLoader.load("khopdi_tod.mp3")
+        self.sound_moye_moye = SoundLoader.load("moye_moye.mp3")
+        self.sound_meow = SoundLoader.load("meow.mp3")
+        
+        # Key & Touch bounds binding
+        Window.bind(on_key_down=self.on_key_down)
+        
+        # Main Game Loop ticking at 60 FPS
+        Clock.schedule_interval(self.update, 1.0 / 60.0)
+        Clock.schedule_interval(self.update_timer, 1.0)
+        
+        self.start_level(1)
+
+    def start_level(self, level_num):
+        self.current_level = level_num
+        self.car_x, self.car_y = 375, 100
+        self.police_x, self.police_y = 375, 20
+        self.heli_x, self.heli_y = 400, 750
+        self.heli_active = False
+        self.bullet_active = False
+        self.bullet_warning_timer = 0
+        self.player_distance = 0.0
+        self.nitro_energy = 50.0
+        self.super_nitro_timer = 0
+        self.coins_list = []
+        self.player_position = self.TOTAL_RACERS
+        self.time_left = self.game_timer
+        
+        self.heli_sound_played = False
+        self.police_sound_played = False
+        self.end_sound_played = False
+        
+        # Reset sounds safely
+        for s in [self.sound_are_baap_re, self.sound_khopdi_tod, self.sound_moye_moye, self.sound_meow]:
+            if s: s.stop()
+            
+        self.init_opponents()
+
+    def init_opponents(self):
+        self.opponents = []
+        for i in range(self.TOTAL_RACERS - 1):
+            self.opponents.append({
+                'id': i,
+                'distance': 400.0 + (i * 480.0) + random.uniform(-80, 80),
+                'speed': 8.5 + (i * 0.35),
+                'color': self.opponent_colors[i % len(self.opponent_colors)],
+                'x': random.choice(self.lanes),
+                'y': 800
+            })
+
+    def spawn_coin(self):
+        if len(self.coins_list) < 4:
+            lane = random.choice(self.lanes) + 15
+            coin_type = 'blue' if random.randint(1, 4) == 1 else 'yellow'
+            self.coins_list.append({'x': lane, 'y': random.randint(650, 800), 'type': coin_type})
+
+    def on_key_down(self, window, key, scancode, codepoint, modifier):
+        if self.current_state == "MENU" and key == 40: # Enter Key
+            self.start_level(1)
+            self.current_state = "GAME"
+        elif self.current_state == "GAME_OVER":
+            if key == 114: # 'R' Key
+                self.start_level(self.current_level)
+                self.current_state = "GAME"
+            elif key == 109: # 'M' Key
+                self.current_state = "MENU"
+        elif self.current_state == "VICTORY":
+            if key == 110: # 'N' Key
+                if self.current_level < 5:
+                    self.start_level(self.current_level + 1)
+                    self.current_state = "GAME"
+                else:
+                    self.current_state = "MENU"
+            elif key == 114: # 'R' Key
+                self.start_level(self.current_level)
+                self.current_state = "GAME"
+
+    # Android controls via Touch screen regions
+    def on_touch_down(self, touch):
+        if self.current_state == "MENU":
+            self.start_level(1)
+            self.current_state = "GAME"
+            return True
+        elif self.current_state == "GAME_OVER":
+            self.start_level(self.current_level)
+            self.current_state = "GAME"
+            return True
+        elif self.current_state == "VICTORY":
+            if self.current_level < 5:
+                self.start_level(self.current_level + 1)
+            else:
+                self.current_state = "MENU"
+            self.current_state = "GAME"
+            return True
+            
+        if self.current_state == "GAME":
+            if touch.x < 400: # Touch left half to move left
+                if self.car_x > 250: self.car_x -= 35
+            else: # Touch right half to move right
+                if self.car_x < 550 - self.car_width: self.car_x += 35
+            
+            # Double tap triggers Nitro Boost
+            if touch.is_double_tap and self.nitro_energy > 0:
+                self.nitro_active = True
+        return True
+
+    def on_touch_up(self, touch):
+        self.nitro_active = False
+        return True
+
+    def update_timer(self, dt):
+        if self.current_state == "GAME":
+            self.time_left -= 1
+            if self.time_left <= 0:
+                if self.player_position <= 3: self.current_state = "VICTORY"
+                else: self.current_state = "GAME_OVER"
+
+    def update(self, dt):
+        if self.current_state != "GAME":
+            self.draw_canvas()
+            return
+            
+        # Speeds and dynamics calculations
+        if self.super_nitro_timer > 0:
+            self.super_nitro_timer -= 1
+            line_speed = (10 + self.current_level) * 2.2
+        elif self.nitro_active and self.nitro_energy > 0:
+            self.nitro_energy -= 0.35
+            line_speed = (10 + self.current_level) * 1.6
         else:
-            nitro_active = False
-            car_speed = base_car_speed
-            line_speed = base_line_speed
+            line_speed = 10 + self.current_level
+            self.nitro_active = False
 
-        player_distance += (line_speed * 0.5)
+        self.player_distance += (line_speed * 0.5)
 
-        if player_distance >= race_length:
-            if player_position <= 3: current_state = STATE_VICTORY
-            else: current_state = STATE_GAME_OVER
+        if self.player_distance >= self.race_length:
+            if self.player_position <= 3: self.current_state = "VICTORY"
+            else: self.current_state = "GAME_OVER"
 
-        if keys[pygame.K_LEFT] and car_x > 250: car_x -= car_speed
-        if keys[pygame.K_RIGHT] and car_x < 550 - car_width: car_x += car_speed
-
-        # --- POLICE MEME TRIGGER ---
-        if police_x < car_x: police_x += police_speed_x
-        elif police_x > car_x: police_x -= police_speed_x
-        police_y += 3 if nitro_active else (-0.2 if police_y > car_y + 90 else 0)
-        
-        if police_y < HEIGHT and not police_sound_played:
-            if sound_khopdi_tod: 
-                sound_khopdi_tod.play()
-            police_sound_played = True
-
-        # --- HELICOPTER MEME TRIGGER ---
-        if player_distance >= 1500: heli_active = True
-        if heli_active:
-            if heli_y < 130: heli_y += 2
-            
-            if not heli_sound_played:
-                if sound_are_baap_re: 
-                    sound_are_baap_re.play()
-                heli_sound_played = True
-                
-            heli_wobble += 0.05
-            heli_x += ((car_x + math.sin(heli_wobble)*30) - heli_x) * 0.04 
-
-            if not bullet_active and bullet_warning_timer == 0 and random.randint(1, 100) < 2:
-                bullet_warning_x, bullet_warning_y = car_x + 10, car_y + 10
-                bullet_warning_timer = 60 
-            
-            if bullet_warning_timer > 0:
-                bullet_warning_timer -= 1
-                if bullet_warning_timer == 0:
-                    bullet_active = True
-                    bullet_rect = pygame.Rect(bullet_warning_x, -50, 20, 40)
-            
-            if bullet_active:
-                bullet_rect.y += 22
-                if bullet_rect.y > HEIGHT: bullet_active = False
-
-        line_y1 = (line_y1 + line_speed) % HEIGHT
-        line_y2 = (line_y2 + line_speed) % HEIGHT
-        line_y3 = (line_y3 + line_speed) % HEIGHT
-        road_stripes_y = (road_stripes_y + line_speed) % 40
-
-        for tree in trees:
-            tree['y'] += line_speed
-            if tree['y'] > HEIGHT:
-                tree['y'] = -50
+        # Moving scenery down
+        self.road_stripes_y = (self.road_stripes_y - line_speed) % 600
+        for tree in self.trees:
+            tree['y'] -= line_speed
+            if tree['y'] < -50:
+                tree['y'] = 650
                 tree['x'] = random.randint(30, 170) if tree['side'] == 'left' else random.randint(580, 720)
 
-        player_pos_calc = TOTAL_RACERS 
-        for op in opponents:
+        # AI Opponents updates
+        player_pos_calc = self.TOTAL_RACERS
+        for op in self.opponents:
             op['distance'] += (op['speed'] * 0.5)
-            if op['distance'] <= player_distance: player_pos_calc -= 1
-            op['y'] = car_y - (op['distance'] - player_distance)
+            if op['distance'] <= self.player_distance: player_pos_calc -= 1
+            op['y'] = self.car_y + (op['distance'] - self.player_distance)
 
-        player_position = max(1, min(TOTAL_RACERS, player_pos_calc))
+        self.player_position = max(1, min(self.TOTAL_RACERS, player_pos_calc))
 
-        for coin in coins_list[:]:
-            coin['rect'].y += line_speed
-            if coin['rect'].y > HEIGHT: coins_list.remove(coin)
-            elif pygame.Rect(car_x, car_y, car_width, car_height).colliderect(coin['rect']):
-                if coin['type'] == 'yellow': nitro_energy = min(100, nitro_energy + 25)
-                else: super_nitro_timer = 300 
-                coins_list.remove(coin)
+        # Coins movements and collisions
+        for coin in self.coins_list[:]:
+            coin['y'] -= line_speed
+            if coin['y'] < -50: self.coins_list.remove(coin)
+            # Collision Box Check
+            elif (self.car_x < coin['x'] + 20 and self.car_x + self.car_width > coin['x'] and
+                  self.car_y < coin['y'] + 20 and self.car_y + self.car_height > coin['y']):
+                if coin['type'] == 'yellow': self.nitro_energy = min(100.0, self.nitro_energy + 25)
+                else: self.super_nitro_timer = 300
+                self.coins_list.remove(coin)
 
-        if random.randint(1, 100) < 5: spawn_coin()
+        if random.randint(1, 100) < 5: self.spawn_coin()
 
-        if pygame.Rect(car_x, car_y, car_width, car_height).colliderect(pygame.Rect(police_x, police_y, police_width, police_height)):
-            current_state = STATE_GAME_OVER
-        if bullet_active and pygame.Rect(car_x, car_y, car_width, car_height).colliderect(bullet_rect):
-            current_state = STATE_GAME_OVER
-        for op in opponents:
-            if 0 < op['y'] < HEIGHT and pygame.Rect(car_x, car_y, car_width, car_height).colliderect(pygame.Rect(op['x'], op['y'], 50, 80)):
-                current_state = STATE_GAME_OVER
-
-    # --- GAME END MEME TRIGGERS ---
-    if current_state == STATE_GAME_OVER and not end_sound_played:
-        pygame.mixer.stop()
-        if sound_moye_moye: 
-            sound_moye_moye.play()
-        end_sound_played = True
+        # Police movements & sound triggers
+        if self.police_x < self.car_x: self.police_x += self.police_speed_x
+        elif self.police_x > self.car_x: self.police_x -= self.police_speed_x
         
-    elif current_state == STATE_VICTORY and not end_sound_played:
-        pygame.mixer.stop()
-        if sound_meow: 
-            sound_meow.play()
-        end_sound_played = True
-
-    # --- 3. RENDERING ENGINE ---
-    theme = MAP_THEMES[current_level]
-    screen.fill(theme["bg"])
-
-    if current_state == STATE_MENU:
-        screen.blit(large_font.render("RACING CHAMPIONSHIP", True, YELLOW), (WIDTH//2 - 250, HEIGHT//2 - 100))
-        screen.blit(font.render("Press ENTER to Start Career Mode", True, WHITE), (WIDTH//2 - 170, HEIGHT//2))
-        screen.blit(font.render("Clear Levels by entering TOP 3 before 60s!", True, LIGHT_BLUE), (WIDTH//2 - 210, HEIGHT//2 + 50))
-
-    elif current_state in [STATE_GAME, STATE_GAME_OVER, STATE_VICTORY]:
-        pygame.draw.rect(screen, theme["road"], (250, 0, 300, 600))
+        if self.police_y < self.car_y - 20: self.police_y += 1
         
-        for y in range(-40, HEIGHT + 40, 40):
-            stripe_color = (200, 200, 200) if current_level == 5 else (WHITE if (y // 40) % 2 == 0 else RED)
-            pygame.draw.rect(screen, stripe_color, (243, y + road_stripes_y, 7, 20))
-            pygame.draw.rect(screen, stripe_color, (550, y + road_stripes_y, 7, 20))
+        if not self.police_sound_played and self.sound_khopdi_tod:
+            self.sound_khopdi_tod.play()
+            self.police_sound_played = True
 
-        cline_color = YELLOW if current_level == 4 else WHITE
-        pygame.draw.rect(screen, cline_color, (395, line_y1, 10, 40))
-        pygame.draw.rect(screen, cline_color, (395, line_y2, 10, 40))
-        pygame.draw.rect(screen, cline_color, (395, line_y3, 10, 40))
+        # Helicopter meme management
+        if self.player_distance >= 1500: self.heli_active = True
+        if self.heli_active:
+            if self.heli_y > 450: self.heli_y -= 2
+            if not self.heli_sound_played and self.sound_are_baap_re:
+                self.sound_are_baap_re.play()
+                self.heli_sound_played = True
+                
+            self.heli_wobble += 0.05
+            self.heli_x += ((self.car_x + math.sin(self.heli_wobble)*30) - self.heli_x) * 0.04
 
-        if current_level != 5:
-            for tree in trees:
-                pygame.draw.rect(screen, BROWN, (tree['x'] + 15, tree['y'] + 30, 10, 20))
-                pygame.draw.circle(screen, theme["tree"], (tree['x'] + 20, tree['y'] + 20), 20)
-        else: 
-            for y in range(0, HEIGHT, 150):
-                pygame.draw.rect(screen, (50, 50, 50), (200, (y + road_stripes_y*2)%600, 43, 20))
-                pygame.draw.rect(screen, (50, 50, 50), (557, (y + road_stripes_y*2)%600, 43, 20))
+        # Global hitboxes checks for crash conditions
+        if abs(self.car_x - self.police_x) < 45 and abs(self.car_y - self.police_y) < 75:
+            self.current_state = "GAME_OVER"
+            
+        for op in self.opponents:
+            if 0 < op['y'] < 600 and abs(self.car_x - op['x']) < 45 and abs(self.car_y - op['y']) < 75:
+                self.current_state = "GAME_OVER"
 
-        for coin in coins_list:
-            pygame.draw.circle(screen, YELLOW if coin['type'] == 'yellow' else BLUE, (coin['rect'].x + 10, coin['rect'].y + 10), 10)
-            pygame.draw.circle(screen, WHITE, (coin['rect'].x + 10, coin['rect'].y + 10), 5, 1)
+        # Safe sound trigger on end game
+        if self.current_state == "GAME_OVER" and not self.end_sound_played:
+            if self.sound_moye_moye: self.sound_moye_moye.play()
+            self.end_sound_played = True
+        elif self.current_state == "VICTORY" and not self.end_sound_played:
+            if self.sound_meow: self.sound_meow.play()
+            self.end_sound_played = True
 
-        if bullet_warning_timer > 0:
-            pygame.draw.circle(screen, RED, (bullet_warning_x + 10, bullet_warning_y + 20), 25, 3)
+        self.draw_canvas()
 
-        for op in opponents:
-            if -100 < op['y'] < HEIGHT + 100:
-                if HAS_IMAGES: screen.blit(enemy_surf, (op['x'], op['y']))
-                else:
-                    pygame.draw.rect(screen, op['color'], (op['x'], op['y'], 50, 80))
-                    pygame.draw.rect(screen, WHITE, (op['x'] + 10, op['y'] + 15, 30, 20))
-
-        pygame.draw.rect(screen, BLACK, (police_x, police_y, police_width, police_height))
-        pygame.draw.rect(screen, WHITE, (police_x + 5, police_y + 20, police_width - 10, 30))
-        pygame.draw.rect(screen, RED if pygame.time.get_ticks() % 400 < 200 else BLUE, (police_x + 10, police_y + 2, 30, 6))
-
-        if bullet_active: pygame.draw.rect(screen, YELLOW, bullet_rect)
-
-        if nitro_active:
-            f_color = LIGHT_BLUE if super_nitro_timer > 0 else ORANGE
-            f_len = random.randint(25, 45) if super_nitro_timer > 0 else random.randint(15, 30)
-            pygame.draw.polygon(screen, f_color, [(car_x + 7, car_y + car_height), (car_x + 2, car_y + car_height + f_len), (car_x + 13, car_y + car_height)])
-            pygame.draw.polygon(screen, f_color, [(car_x + car_width - 13, car_y + car_height), (car_x + car_width - 2, car_y + car_height + f_len), (car_x + car_width - 7, car_y + car_height)])
-
-        if HAS_IMAGES:
-            if super_nitro_timer > 0: screen.blit(player_boost_surf, (car_x, car_y))
-            else: screen.blit(player_normal_surf, (car_x, car_y))
-        else:
-            pygame.draw.rect(screen, LIGHT_BLUE if super_nitro_timer > 0 else RED, (car_x, car_y, car_width, car_height))
-
-        if heli_active:
-            pygame.draw.ellipse(screen, (50, 50, 50), (heli_x - 30, heli_y - 20, 110, 40))
-            pygame.draw.ellipse(screen, BLUE, (heli_x + 40, heli_y - 12, 30, 20))
-            b_offset = int(math.sin(pygame.time.get_ticks() * 0.15) * 60)
-            pygame.draw.line(screen, WHITE, (heli_x + 25 - b_offset, heli_y - 25), (heli_x + 25 + b_offset, heli_y - 25), 4)
-
-        # Minimap 
-        mx, my, mw, mh = 750, 150, 16, 300
-        pygame.draw.rect(screen, BLACK, (mx - 4, my - 4, mw + 8, mh + 8), 2)
-        pygame.draw.rect(screen, GRAY, (mx, my, mw, mh))
-        pygame.draw.rect(screen, GREEN, (mx, my + mh - 8, mw, 8)) 
-        pygame.draw.rect(screen, RED, (mx, my, mw, 8)) 
+    def draw_canvas(self):
+        self.canvas.clear()
+        theme = MAP_THEMES[self.current_level]
         
-        pygame.draw.circle(screen, YELLOW, (mx + 8, my + mh - int((player_distance / race_length) * mh)), 5)
-        for op in opponents:
-            pygame.draw.circle(screen, RED, (mx + 8, max(my, min(my+mh, my + mh - int((op['distance'] / race_length) * mh)))), 3)
+        with self.canvas:
+            # Background Canvas Drawing
+            Color(*theme["bg"])
+            Rectangle(pos=(0, 0), size=(800, 600))
+            
+            if self.current_state == "MENU":
+                Color(1, 215/255, 0) # Gold
+                # Kivy doesn't have inline fonts like pygame, we use core engine tags or labels
+                return
 
-        screen.blit(large_font.render(f"Pos: {player_position}/10", True, YELLOW), (10, 10))
-        screen.blit(font.render(theme["name"], True, WHITE), (10, 55))
-        
-        time_color = RED if time_left <= 10 else WHITE
-        screen.blit(font.render(f"⏱️ Time Left: {time_left}s", True, time_color), (10, 85))
+            # Road Layout Paint
+            Color(*theme["road"])
+            Rectangle(pos=(250, 0), size=(300, 600))
+            
+            # Boundary lines
+            Color(1,1,1)
+            Rectangle(pos=(243, 0), size=(7, 600))
+            Rectangle(pos=(550, 0), size=(7, 600))
+            
+            # Center Stripes
+            Color(1, 1, 0 if self.current_level == 4 else 1)
+            for y in range(0, 600, 150):
+                Rectangle(pos=(395, (y + self.road_stripes_y) % 600), size=(10, 50))
+                
+            # Render Scenery
+            for tree in self.trees:
+                Color(139/255, 69/255, 19/255) # Brown
+                Rectangle(pos=(tree['x'] + 15, tree['y']), size=(10, 20))
+                Color(*theme["tree"])
+                Ellipse(pos=(tree['x'], tree['y'] + 15), size=(40, 40))
 
-        prog_p = min(100, int((player_distance / race_length) * 100))
-        pygame.draw.rect(screen, BLACK, (10, 120, 180, 18))
-        pygame.draw.rect(screen, GREEN, (10, 120, int(prog_p * 1.8), 18))
-        
-        pygame.draw.rect(screen, BLACK, (10, 150, 180, 18))
-        pygame.draw.rect(screen, ORANGE, (10, 150, int(nitro_energy * 1.8), 18))
+            # Coins Render
+            for coin in self.coins_list:
+                Color(1, 1, 0 if coin['type'] == 'yellow' else 1)
+                Ellipse(pos=(coin['x'], coin['y']), size=(20, 20))
 
-        if current_state == STATE_GAME_OVER:
-            overlay = pygame.Surface((WIDTH, HEIGHT)); overlay.set_alpha(200); overlay.fill(BLACK); screen.blit(overlay, (0,0))
-            screen.blit(large_font.render("GAME OVER / STAGE FAILED", True, RED), (WIDTH//2 - 270, HEIGHT//2 - 60))
-            screen.blit(font.render("Press 'R' to Retry Level", True, WHITE), (WIDTH//2 - 110, HEIGHT//2 + 10))
-        
-        elif current_state == STATE_VICTORY:
-            overlay = pygame.Surface((WIDTH, HEIGHT)); overlay.set_alpha(210); overlay.fill(BLACK); screen.blit(overlay, (0,0))
-            if current_level < 5:
-                screen.blit(large_font.render(f"LEVEL {current_level} CLEARED!", True, YELLOW), (WIDTH//2 - 180, HEIGHT//2 - 60))
-                screen.blit(font.render("Press 'N' for NEXT MAP STAGE 🏁", True, WHITE), (WIDTH//2 - 170, HEIGHT//2 + 10))
-            else:
-                screen.blit(large_font.render("🏆 ULTIMATE CHAMPION! 🏆", True, YELLOW), (WIDTH//2 - 250, HEIGHT//2 - 60))
-                screen.blit(font.render("You conquered all tracks! Press 'R' to Restart", True, WHITE), (WIDTH//2 - 200, HEIGHT//2 + 10))
+            # AI Racers Render
+            for op in self.opponents:
+                if -100 < op['y'] < 700:
+                    Color(*op['color'])
+                    Rectangle(pos=(op['x'], op['y']), size=(50, 80))
 
-    pygame.display.update()
+            # Police Car Render
+            Color(0,0,0)
+            Rectangle(pos=(self.police_x, self.police_y), size=(50, 80))
+            Color(0,0,1) # Light bar
+            Rectangle(pos=(self.police_x + 10, self.police_y + 75), size=(30, 5))
 
-pygame.quit()
-sys.exit()
+            # Player Asset Render Engine
+            if self.super_nitro_timer > 0 or self.nitro_active:
+                Color(1, 0.5, 0) # Flame effect
+                Rectangle(pos=(self.car_x + 10, self.car_y - 20), size=(30, 20))
+                
+            Color(0.4, 0.8, 1) # Blue Player Car
+            Rectangle(pos=(self.car_x, self.car_y), size=(self.car_width, self.car_height))
+
+            # Helicopter Mode Paint
+            if self.heli_active:
+                Color(0.2, 0.2, 0.2)
+                Ellipse(pos=(self.heli_x - 30, self.heli_y - 20), size=(110, 40))
+
+class MemeCarGameApp(App):
+    def build(self):
+        return GameWidget()
+
+if __name__ == '__main__':
+    MemeCarGameApp().run()
